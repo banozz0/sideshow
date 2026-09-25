@@ -31,10 +31,12 @@ import {
   type CodeSurface,
   type Comment,
   type CommentAnchor,
+  DEFAULT_WIDTH,
   type DiffSurface,
   htmlSurface,
   isSandboxedSurfaceKind,
   reservedAgent,
+  LAYOUT_WIDTHS,
   type MarkdownSurface,
   MAX_ASSET_BYTES,
   surfacesByteLength,
@@ -264,6 +266,7 @@ function isPublicReadAllowed(path: string, mode: PublicReadMode): boolean {
   if (path === "/api/comments") return true;
   if (path === "/api/events") return true;
   if (path === "/api/theme") return true;
+  if (path === "/api/width") return true;
   if (path === "/api/version") return true;
   if (path === "/api/kits") return true;
   return false;
@@ -1035,6 +1038,22 @@ export function createApp({
     }
     await store.setSetting("theme", id);
     bus.broadcast({ type: "theme-changed", id });
+    return c.json({ id });
+  });
+
+  // --- column width (one workspace-level setting, same shape as theme) ---
+
+  app.get("/api/width", async (c) => {
+    const id = (await store.getSetting("width")) ?? DEFAULT_WIDTH;
+    return c.json({ id });
+  });
+
+  app.put("/api/width", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const id = body?.id;
+    if (!LAYOUT_WIDTHS.includes(id)) return c.json({ error: "unknown width id" }, 400);
+    await store.setSetting("width", id);
+    bus.broadcast({ type: "width-changed", id });
     return c.json({ id });
   });
 

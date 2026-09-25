@@ -100,6 +100,12 @@ export function isSandboxedSurfaceKind(kind: unknown): kind is SurfaceKind {
   return isSurfaceKind(kind) && SURFACE_KIND_METADATA[kind].sandboxed;
 }
 
+// Workspace column width (Store setting "width"): "normal" is the classic 860px
+// feed column, "wide" lets it grow with the window (viewer styles.css).
+export const LAYOUT_WIDTHS = ["normal", "wide"] as const;
+export type LayoutWidth = (typeof LAYOUT_WIDTHS)[number];
+export const DEFAULT_WIDTH: LayoutWidth = "normal";
+
 export interface HtmlSurface {
   kind: "html";
   html: string;
