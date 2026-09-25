@@ -31,7 +31,10 @@ import { type Mode, THEMES, themeById } from "./themes.ts";
 import type { CodeSurface, DiffSurface, MarkdownSurface, TerminalSurface } from "./types.ts";
 
 export type RenderedSurface = { body: string; css: string };
-export type RenderOpts = { theme?: string; mode?: Mode };
+// `wrap` (the viewer's wide mode) soft-wraps long lines instead of scrolling
+// sideways; each renderer adds its own wrap rules only when it is set.
+export type RenderOpts = { theme?: string; mode?: Mode; wrap?: boolean };
+const SOFT_WRAP = "white-space: pre-wrap; overflow-wrap: anywhere;";
 
 // ---------------------------------------------------------------------------
 // shiki: one shared highlighter on the JS regex engine (no oniguruma WASM —
@@ -200,7 +203,8 @@ export async function renderMarkdown(
     return renderLinkOpen(tokens, idx, options, env, self);
   };
 
-  return { body: md.render(src), css: MD_CSS + shikiSchemeCss(opts.mode) };
+  const wrap = opts.wrap ? `pre { ${SOFT_WRAP} }` : "";
+  return { body: md.render(src), css: MD_CSS + wrap + shikiSchemeCss(opts.mode) };
 }
 
 // ---------------------------------------------------------------------------
@@ -239,7 +243,7 @@ function resolveCarriageReturns(text: string): string {
     .join("\n");
 }
 
-export function renderTerminal(part: TerminalSurface): RenderedSurface {
+export function renderTerminal(part: TerminalSurface, opts: RenderOpts = {}): RenderedSurface {
   const au = new AnsiUp();
   au.use_classes = false;
   const ansi = au.ansi_to_html(resolveCarriageReturns(part.text ?? ""));
@@ -250,7 +254,8 @@ export function renderTerminal(part: TerminalSurface): RenderedSurface {
     `<span></span><span></span><span></span></span>` +
     `<span class="term-title">${title}</span></div>` +
     `<pre class="term-body"${width}>${ansi}</pre>`;
-  return { body, css: TERM_CSS };
+  const wrap = opts.wrap ? `.term-body { ${SOFT_WRAP} }` : "";
+  return { body, css: TERM_CSS + wrap };
 }
 
 // ---------------------------------------------------------------------------
@@ -304,6 +309,15 @@ pre.shiki code, pre.plain code { background: none; padding: 0; }
 pre.plain { color: var(--text); }
 `;
 
+// Wrapped lines hang under the code, not the line number: the indent pulls the
+// number back to the gutter the padding reserves.
+const CODE_WRAP_CSS = `
+.line {
+  ${SOFT_WRAP}
+  padding-left: calc(2.5em + 12px); text-indent: calc(-2.5em - 12px);
+}
+`;
+
 function plainHtml(code: string): string {
   const lines = code.split("\n");
   return `<pre class="plain"><code>${lines
@@ -350,7 +364,7 @@ export async function renderCode(
   const head = hasHead ? `<div class="code-head">${filename}${langBadge}${copyBtn}</div>` : copyBtn;
   const codeJs = JSON.stringify(code).replace(/</g, "\\u003c");
   const body = `<div class="${wrapClass}">${head}${preWithStart}<script>(function(){var c=${codeJs};window.__codeCopy=function(b){copyToClipboard(c);b.textContent="Copied!";b.classList.add("copied");setTimeout(function(){b.textContent="Copy";b.classList.remove("copied")},1500)}})();</script></div>`;
-  return { body, css: CODE_CSS + shikiSchemeCss(opts.mode) };
+  return { body, css: CODE_CSS + (opts.wrap ? CODE_WRAP_CSS : "") + shikiSchemeCss(opts.mode) };
 }
 
 // ---------------------------------------------------------------------------
@@ -412,6 +426,7 @@ export async function renderDiff(
     theme: { dark: shiki.dark, light: shiki.light },
     themeType: opts.mode ?? "system",
     preferredHighlighter: "shiki-js",
+    ...(opts.wrap ? { overflow: "wrap" as const } : {}),
   } as const;
   const rendered = await Promise.all(
     diffs.map((fileDiff) => preloadFileDiff({ fileDiff, options })),

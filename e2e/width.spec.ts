@@ -1,5 +1,8 @@
 import { expect, publishParts, test } from "./fixtures.ts";
 import type { Page } from "@playwright/test";
+import { isSoftWrapSurfaceKind, SURFACE_FRAME_CLASSES, SURFACE_KINDS } from "../server/types.ts";
+
+const SOFT_WRAP_KINDS = SURFACE_KINDS.filter(isSoftWrapSurfaceKind);
 
 // Wide mode (issue #223): a workspace setting that lets the feed column grow past
 // its 860px cap on a wide window, with markdown kept at a readable measure.
@@ -23,10 +26,10 @@ const markdownWidths = (page: Page) =>
       prose: document.querySelector("p")!.getBoundingClientRect().width,
       code: document.querySelector("pre")!.getBoundingClientRect().width,
     }));
-// Widest sideways scroll inside the diff frame (@pierre/diffs renders in shadow roots).
-const diffOverflow = (page: Page) =>
+// Widest sideways scroll inside a surface frame (@pierre/diffs renders in shadow roots).
+const frameOverflow = (page: Page, frame: string) =>
   page
-    .frameLocator(".card:not(#whatsNew) iframe.diffframe")
+    .frameLocator(`.card:not(#whatsNew) iframe.${frame}`)
     .locator("body")
     .evaluate(() => {
       let max = 0;
@@ -40,7 +43,10 @@ const diffOverflow = (page: Page) =>
       };
       walk(document);
       return max;
-    });
+    })
+    // a width switch reloads the frame mid-poll; NaN fails both bounds, so poll again
+    .catch(() => Number.NaN);
+const diffOverflow = (page: Page) => frameOverflow(page, "diffframe");
 
 test.use({ viewport: { width: 1930, height: 1000 } });
 
@@ -103,4 +109,30 @@ test("phone layout is unchanged in wide mode and hides the toggle", async ({ pag
   await expect(page.locator(".card:not(#whatsNew)")).toBeVisible();
   await expect(page.locator("#widthToggle")).toBeHidden();
   expect(await streamWidth(page)).toBe(normal);
+});
+
+test("wide mode soft-wraps lines longer than the column instead of scrolling", async ({
+  page,
+  server,
+}) => {
+  const huge = `${"word ".repeat(400)}end`; // ~2000 chars, wider than any column
+  await publishParts(server.url, {
+    title: "Wrap",
+    agent: "e2e",
+    parts: [
+      { kind: "markdown", markdown: `\`\`\`text\n${huge}\n\`\`\`` },
+      { kind: "code", code: `const s = "${huge}";`, language: "ts" },
+      { kind: "terminal", text: huge },
+      { kind: "diff", patch: `--- a/x\n+++ b/x\n@@ -1 +1 @@\n-${huge}\n+${huge}!` },
+    ],
+  });
+  await page.goto(server.url);
+  const frames = SOFT_WRAP_KINDS.map((kind) => SURFACE_FRAME_CLASSES[kind]!);
+
+  // normal: the long lines scroll sideways, as before
+  for (const f of frames) await expect.poll(() => frameOverflow(page, f)).toBeGreaterThan(1);
+
+  await page.locator("#widthToggle").click();
+  await expect.poll(() => streamWidth(page)).toBe(1600);
+  for (const f of frames) await expect.poll(() => frameOverflow(page, f)).toBeLessThanOrEqual(1);
 });
