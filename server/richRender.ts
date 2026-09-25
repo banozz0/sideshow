@@ -117,6 +117,9 @@ function shikiThemeOptions(theme: string | undefined, mode: Mode | undefined): S
 // Markdown
 // ---------------------------------------------------------------------------
 
+// Prose is capped just above its width in the normal 860px column, so normal
+// mode is unchanged while a wide frame keeps a readable measure; code blocks
+// and tables are not capped and use the full width.
 const MD_CSS = `
 body {
   margin: 0;
@@ -162,6 +165,7 @@ th, td { border: 0.5px solid var(--border); padding: 4px 8px; text-align: left; 
 th { background: var(--hover); }
 img { max-width: 100%; height: auto; border-radius: 6px; }
 hr { border: none; border-top: 0.5px solid var(--border); margin: 1em 0; }
+p, h1, h2, h3, h4, h5, h6, ul, ol, dl, blockquote { max-width: 780px; }
 `;
 
 // The languages named on fenced code blocks (```ts, ~~~python).

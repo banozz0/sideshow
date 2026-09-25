@@ -546,15 +546,10 @@ main {
 }
 /* Wide mode (width.ts): the column grows with the window so diffs and wide html
    stop scrolling sideways. Only max-width changes, so phone rules still apply.
-   Markdown keeps a readable ~80ch measure: right padding shrinks the frame's
-   viewport, while its full-width border-top still separates the surfaces. */
+   Markdown prose keeps a readable measure inside its own frame (richRender.ts). */
 .wide #stream,
 .wide .standalone-main {
   max-width: 1600px;
-}
-.wide #stream iframe.mdframe,
-.wide .standalone-main iframe.mdframe {
-  padding-right: max(0px, calc(100% - 740px));
 }
 .standalone-foot {
   margin-top: 18px;

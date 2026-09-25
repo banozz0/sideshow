@@ -5,17 +5,24 @@ import type { Page } from "@playwright/test";
 // its 860px cap on a wide window, with markdown kept at a readable measure.
 const LONG = `const value = compute(${"x".repeat(130)});`; // ~150 chars
 const PARTS = [
-  { kind: "markdown", markdown: "Some prose that should keep a readable measure." },
+  {
+    kind: "markdown",
+    markdown: `${"Some prose that should keep a readable measure. ".repeat(12)}\n\n\`\`\`text\n${LONG}\n\`\`\``,
+  },
   { kind: "diff", patch: `--- a/x\n+++ b/x\n@@ -1 +1 @@\n-${LONG}\n+${LONG}y` },
 ];
 
 const streamWidth = (page: Page) =>
   page.locator("#stream").evaluate((el) => el.getBoundingClientRect().width);
-const markdownViewport = (page: Page) =>
+// Rendered widths of the markdown prose paragraph and its code block.
+const markdownWidths = (page: Page) =>
   page
     .frameLocator(".card:not(#whatsNew) iframe.mdframe")
     .locator("body")
-    .evaluate(() => innerWidth);
+    .evaluate(() => ({
+      prose: document.querySelector("p")!.getBoundingClientRect().width,
+      code: document.querySelector("pre")!.getBoundingClientRect().width,
+    }));
 // Widest sideways scroll inside the diff frame (@pierre/diffs renders in shadow roots).
 const diffOverflow = (page: Page) =>
   page
@@ -49,14 +56,17 @@ test("the wide toggle widens the column, persists, and toggles back to normal", 
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   expect(await streamWidth(page)).toBe(860);
   await expect.poll(() => diffOverflow(page)).toBeGreaterThan(1);
-  const normalMarkdown = await markdownViewport(page);
+  const normalMarkdown = await markdownWidths(page);
+  expect(normalMarkdown.prose).toBe(normalMarkdown.code);
 
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
   await expect.poll(() => streamWidth(page)).toBe(1600);
-  // the diff now fits; markdown keeps its readable measure (no wider than normal)
+  // the diff now fits; markdown prose keeps its readable measure while its code
+  // block takes the full width
   await expect.poll(() => diffOverflow(page)).toBeLessThanOrEqual(1);
-  await expect.poll(() => markdownViewport(page)).toBeLessThanOrEqual(normalMarkdown);
+  await expect.poll(async () => (await markdownWidths(page)).code).toBeGreaterThan(1200);
+  expect((await markdownWidths(page)).prose).toBeLessThanOrEqual(780);
 
   // PUT /api/width persisted it for the workspace
   await page.reload();
@@ -65,7 +75,7 @@ test("the wide toggle widens the column, persists, and toggles back to normal", 
 
   await toggle.click();
   await expect.poll(() => streamWidth(page)).toBe(860);
-  await expect.poll(() => markdownViewport(page)).toBe(normalMarkdown);
+  await expect.poll(() => markdownWidths(page)).toEqual(normalMarkdown);
 });
 
 test("another open tab follows a width switch live", async ({ page, context, server }) => {
